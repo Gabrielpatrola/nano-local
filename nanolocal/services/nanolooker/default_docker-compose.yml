@@ -15,9 +15,17 @@ services:
     #  - ./.nl_nanolooker_mongo:/data/db
     networks:
     - nano-local
-  
-  nl_nanolooker:  
-    build: 
+
+  nl_nanolooker_redis:
+    image: redis:7-alpine
+    container_name: nanolooker_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    networks:
+    - nano-local
+
+  nl_nanolooker:
+    build:
       context: ../
       dockerfile: ./services/nanolooker/Dockerfile
       args:
@@ -25,23 +33,29 @@ services:
         - MONGO_CONTAINER=nanolooker_mongo
         - MONGO_PORT=27017
         - NODE_WEBSOCKET_PORT=47100
-    command: node /usr/src/app/nanolooker/server/server.js    
+    command: node /usr/src/app/nanolooker/server/server.js
     container_name : nanolooker
     restart: unless-stopped
+    depends_on:
+      - nl_nanolooker_mongo
+      - nl_nanolooker_redis
     ports:
       - 42000:3010
     environment:
       - NODE_ENV=production
       - SERVER_PORT=3010
-      - RPC_DOMAIN=http://nl_genesis:17076      
+      - RPC_DOMAIN=http://nl_genesis:17076
       - MONGO_USER=root
       - MONGO_PASSWORD=password
+      - REDIS_HOST=nl_nanolooker_redis
+      - PROD_REDIS_PORT=6379
+      - NL_REDIS_DB_INDEX=0
+      - NBQ_REDIS_DB_INDEX=0
     networks:
-      - nano-local
-  
+    - nano-local
+
 networks:
   nano-local:
     name : nano-local
     external: true
 
-  

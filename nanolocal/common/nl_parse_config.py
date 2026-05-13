@@ -1023,7 +1023,7 @@ class ConfigParser:
         elif general_tag["found"]:
             return general_tag["value"]
         else:
-            return "nanocurrency/nano-beta:V29.0DB63"
+            return "nanocurrency/nano-beta:V28.2"
 
     def compose_add_node(self, node_name):
         #Search for individual docker_tag, then individual executable, then shared docker-tag then shared-executable

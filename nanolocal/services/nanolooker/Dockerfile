@@ -13,6 +13,9 @@ ARG MONGO_CONTAINER="nanolooker_mongo"
 ARG MONGO_PORT="27017"
 RUN sed -i "s/localhost:27017/${MONGO_CONTAINER}:${MONGO_PORT}/g" ./server/constants.js
 
+# redis npm v4 moved host/port inside socket:{} — patch before install
+RUN node -e 'var fs=require(`fs`),p=`./server/client/redis.js`,c=fs.readFileSync(p,`utf8`);c=c.replace(`...(NODE_ENV === "development" ? { port: DEV_REDIS_PORT } : { port: PROD_REDIS_PORT }),\n  host: REDIS_HOST,`,`socket: { host: REDIS_HOST, port: NODE_ENV === "development" ? Number(DEV_REDIS_PORT) : Number(PROD_REDIS_PORT) },`);fs.writeFileSync(p,c);'
+
 RUN npm install
 RUN npm run build
 

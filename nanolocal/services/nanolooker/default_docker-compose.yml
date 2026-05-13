@@ -21,6 +21,8 @@ services:
     container_name: nanolooker_redis
     restart: unless-stopped
     command: redis-server --appendonly yes
+    ports:
+      - 6379:6379
     networks:
     - nano-local
 
@@ -33,6 +35,7 @@ services:
         - MONGO_CONTAINER=nanolooker_mongo
         - MONGO_PORT=27017
         - NODE_WEBSOCKET_PORT=47100
+        - INTERNAL_WS_URI=ws://nl_genesis:17078
     command: node /usr/src/app/nanolooker/server/server.js
     container_name : nanolooker
     restart: unless-stopped

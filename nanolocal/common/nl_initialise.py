@@ -1,5 +1,5 @@
 from nanolocal.common.nl_rpc import NanoRpc
-from nanolocal.common.nl_nanolib import raw_high_precision_percent
+from nanolocal.common.nl_nanolib import NanoLibTools, raw_high_precision_percent
 from nanolocal.common.nl_parse_config import ConfigParser
 import logging
 
@@ -111,7 +111,23 @@ class InitialBlocks:
                 node_conf["name"], min(node_conf["balance"], genesis_remaing))
             genesis_remaing = max(0, genesis_remaing - node_conf["balance"])
 
+        for node_conf in self.config.get_nodes_config():
+            funded = node_conf.get("funded_accounts") or []
+            if not funded:
+                node_conf.pop("primary_balance", None)
+                continue
+            reserved = sum(int(f["balance_raw"]) for f in funded)
+            total = int(node_conf["balance"])
+            if reserved > total:
+                logging.warning(
+                    "funded_accounts total raw %s exceeds node %s allocation %s; primary will be 0",
+                    reserved, node_conf["name"], total,
+                )
+            node_conf["primary_balance"] = max(0, total - reserved)
+
     def __send_vote_weigh(self):
+
+        self.config.log_funded_accounts_preview("immediately before genesis sends")
 
         for node_conf in self.config.get_nodes_config():
 
@@ -119,10 +135,14 @@ class InitialBlocks:
 
                 continue  #skip genesis that was added as node
             node_account_data = node_conf["account_data"]
+            rep_account = node_account_data["account"]
+            primary_raw = int(
+                node_conf["primary_balance"]
+            ) if "primary_balance" in node_conf else int(node_conf["balance"])
 
             send_block = self.api.create_send_block_pkey(
                 self.config.get_genesis_account_data()["private"],
-                node_account_data["account"], node_conf["balance"])
+                node_account_data["account"], primary_raw)
 
             logging.info("SENT {:>40} FROM {} To {} : HASH {}".format(
                 send_block["amount_raw"],
@@ -131,25 +151,64 @@ class InitialBlocks:
 
             open_block = self.api.create_open_block(
                 node_account_data["account"], node_account_data["private"],
-                node_conf["balance"], node_account_data["account"],
-                send_block["hash"])
+                primary_raw, rep_account, send_block["hash"])
 
             logging.info("OPENED PR ACCOUNT {} : HASH {}".format(
                 node_account_data["account"], open_block["hash"]))
+
+            for fa in node_conf.get("funded_accounts") or ():
+                if "account_data" not in fa:
+                    logging.warning(
+                        "Skipping funded_account without account_data on node %s",
+                        node_conf.get("name"),
+                    )
+                    continue
+                fa_ad = fa["account_data"]
+                amt = int(fa["balance_raw"])
+                send_f = self.api.create_send_block_pkey(
+                    self.config.get_genesis_account_data()["private"],
+                    fa_ad["account"], amt)
+                logging.info("SENT {:>40} FROM {} To {} : HASH {}".format(
+                    send_f["amount_raw"],
+                    self.config.get_genesis_account_data()["account"],
+                    fa_ad["account"], send_f["hash"]))
+                open_f = self.api.create_open_block(
+                    fa_ad["account"], fa_ad["private"], amt, rep_account,
+                    send_f["hash"])
+                logging.info(
+                    "OPENED FUNDED ACCOUNT {} (rep={}) : HASH {}".format(
+                        fa_ad["account"], rep_account, open_f["hash"]))
 
     def create_node_wallet(self,
                            rpc_url,
                            node_name,
                            private_key=None,
-                           seed=None):
+                           seed=None,
+                           funded_accounts=None):
         api = NanoRpc(rpc_url)
+        nano_lib = NanoLibTools()
 
         if private_key != None:
             wallet = api.wallet_create(None)["wallet"]
             account = api.wallet_add(wallet, private_key)["account"]
-        if seed != None:
+        elif seed != None:
             wallet = api.wallet_create(seed)["wallet"]
             account = api.get_account_data(seed, 0)["account"]
+            for fa in funded_accounts or ():
+                idx = fa.get("seed_index")
+                if idx in (None, 0):
+                    continue
+                ad = nano_lib.nanolib_account_data(seed=seed, index=int(idx))
+                api.wallet_add(wallet, ad["private"])
+                msg = (
+                    f"Wallet {wallet}: added funded account seed_index={idx} -> "
+                    f"{ad['account']} (balance_raw={fa.get('balance_raw')})"
+                )
+                logging.info(msg)
+                print(msg, flush=True)
+        else:
+            wallet = None
+            account = None
         logging.info(
             f"WALLET {wallet} CREATED FOR {node_name} WITH ACCOUNT {account}")
 

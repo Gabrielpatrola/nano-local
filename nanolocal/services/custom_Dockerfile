@@ -1,4 +1,4 @@
-ARG NANO_IMAGE="nanocurrency/nano-beta:latest"
+ARG NANO_IMAGE="nanocurrency/nano-beta:V28.2"
 FROM $NANO_IMAGE
 
 

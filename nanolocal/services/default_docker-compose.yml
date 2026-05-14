@@ -24,7 +24,7 @@ services:
       context: ../
       dockerfile: ./services/custom_Dockerfile
       args:
-        - NANO_IMAGE=nanocurrency/nano-beta:latest
+        - NANO_IMAGE=nanocurrency/nano-beta:V28.2
         - UID=999
         - TC_ENABLE=FALSE
     user: "123" #replaced with UID during "create" command

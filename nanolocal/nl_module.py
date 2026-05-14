@@ -260,6 +260,9 @@ class nl_runner():
 
     def init_wallets(self):
         #self.start_nodes('all')  #fixes a bug on mac m1
+        global _conf
+        _conf = ConfigParser()
+        _conf.log_funded_accounts_preview("before wallet create & on-chain funding")
         init_blocks = InitialBlocks(rpc_url=_conf.get_nodes_rpc()[0])
         for node_name in _conf.get_nodes_name():
             if node_name == _conf.get_genesis_node_name():
@@ -269,10 +272,13 @@ class nl_runner():
                     _conf.get_genesis_node_name(),
                     private_key=_conf.config_dict["genesis_key"])
             else:
+                nc = _conf.get_node_config(node_name)
                 init_blocks.create_node_wallet(
-                    _conf.get_node_config(node_name)["rpc_url"],
+                    nc["rpc_url"],
                     node_name,
-                    seed=_conf.get_node_config(node_name)["seed"])
+                    seed=nc["seed"],
+                    funded_accounts=nc.get("funded_accounts"),
+                )
 
     def init_nodes(self):
 

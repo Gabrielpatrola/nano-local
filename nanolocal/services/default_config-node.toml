@@ -9,9 +9,12 @@ enable = true
 enable_sign_hash = true
 
 [node]
-work_threads = 1
+work_threads = 0
 enable_voting = true
 peering_port = 17075
+work_peers = [
+    "host.docker.internal:7000"
+]
 preconfigured_peers = []
 allow_local_peers = true
 #bandwidth_limit = 4096

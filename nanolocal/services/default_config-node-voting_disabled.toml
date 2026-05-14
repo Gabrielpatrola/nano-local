@@ -9,7 +9,10 @@ enable = true
 enable_sign_hash = true
 
 [node]
-work_threads = 1
+work_threads = 0
+work_peers = [
+    "host.docker.internal:7000"
+]
 enable_voting = false
 peering_port = 17075
 preconfigured_peers = []

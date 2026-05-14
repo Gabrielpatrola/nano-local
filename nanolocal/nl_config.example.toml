@@ -16,6 +16,7 @@ nanolooker_enable = false
 nanolooker_port = 42000
 nanolooker_node_name = "genesis"
 nanolooker_mongo_port = 27017
+nanolooker_redis_port = 6379
 
 #Enable monitor on port 46000 for genesis, 46001 for first representative.node , ...
 nanomonitor_enable = false
@@ -32,7 +33,7 @@ host_port_rpc = 45000
 host_port_ws = 47000
 config_node_path = "./nanolocal/services/default_config-node-voting_disabled.toml"
 config_rpc_path = "./nanolocal/services/default_config-rpc.toml"
-docker_tag = "nanocurrency/nano-beta:V24.0DB26"
+docker_tag = "nanocurrency/nano-beta:V28.2"
 
 [[representatives.nodes]]
 name = "pr1"
@@ -50,6 +51,10 @@ config_node_path = "./nanolocal/services/default_config-node.toml"
 name = "pr3"
 seed = "1110000000000000000000000000000000000000000000000000000000000003"
 vote_weight_percent = 33.33
+# Extra wallet (seed index 1): 10_666_666 XNO = 10666666 * 10^30 raw; votes via nl_pr3 rep (index 0).
+funded_accounts = [
+    { seed_index = 1, balance_raw = "10666666000000000000000000000000000000" },
+]
 config_node_path = "./nanolocal/services/default_config-node.toml"
 
 [testcases.basic]

@@ -21,7 +21,7 @@ _app_dir = os.environ.get("NL_APP_DIR",
 _config_dir = os.path.join(_app_dir, "./services")
 _config_path = os.path.join(_app_dir, "./nl_config.toml")
 _default_compose_path = f"{_config_dir}/default_docker-compose.yml"
-_dockerfile_path = os.path.join(_app_dir, "/nano_nodes/{node_name}")
+_dockerfile_path = os.path.join(_app_dir, "nano_nodes", "{node_name}")
 _default_nanomonitor_config = os.path.join(_config_dir,
                                            "nanomonitor/default_config.php")
 _nano_nodes_path = os.path.join(_app_dir, "./nano_nodes")
@@ -126,6 +126,38 @@ class ConfigParser:
             if "vote_weight_percent" in node:
                 node["balance"] = raw_high_precision_multiply(
                     available_supply, node["vote_weight_percent"])
+            for fa in node.get("funded_accounts") or []:
+                if node.get("is_genesis"):
+                    logging.warning(
+                        "funded_accounts on genesis node is not supported; ignored"
+                    )
+                    break
+                if "seed" not in node:
+                    logging.warning(
+                        "funded_accounts requires seed on node %r; ignored",
+                        node.get("name"),
+                    )
+                    break
+                br = fa.get("balance_raw", fa.get("balance"))
+                if br is None:
+                    logging.warning(
+                        "funded_accounts entry missing balance_raw; ignored"
+                    )
+                    continue
+                fa["balance_raw"] = str(br)
+                idx = fa.get("seed_index")
+                if idx is None:
+                    logging.warning(
+                        "funded_accounts entry missing seed_index; ignored"
+                    )
+                    continue
+                if int(idx) == 0:
+                    logging.warning(
+                        "funded_accounts seed_index 0 is the node account; skipped"
+                    )
+                    continue
+                fa["account_data"] = self.nano_lib.nanolib_account_data(
+                    seed=node["seed"], index=int(idx))
 
     def __set_special_account_data(self):
         self.config_dict["burn_account_data"] = {
@@ -221,6 +253,7 @@ class ConfigParser:
         self.config_dict.setdefault("nanolooker_port", 42000)
         self.config_dict.setdefault("nanolooker_node_name", "genesis")
         self.config_dict.setdefault("nanolooker_mongo_port", 27017)
+        self.config_dict.setdefault("nanolooker_redis_port", 6379)
 
         #nanomonitor, nanoticker, nano-vote-visualizer
         self.config_dict.setdefault(
@@ -581,6 +614,66 @@ class ConfigParser:
             response.append(node["name"])
         return response
 
+    def log_funded_accounts_preview(self, phase=""):
+        """Print and log every funded_accounts address (see nl_config funded_accounts)."""
+        title = "[nano-local] Funded accounts"
+        if phase:
+            title = f"{title} — {phase}"
+        bar = "=" * min(72, max(len(title), 40))
+        logging.info(bar)
+        logging.info(title)
+        logging.info(bar)
+        print(bar, flush=True)
+        print(title, flush=True)
+        print(bar, flush=True)
+        count = 0
+        for node_name in self.get_nodes_name():
+            nc = self.get_node_config(node_name)
+            if not nc:
+                continue
+            for fa in nc.get("funded_accounts") or []:
+                ad = fa.get("account_data")
+                if not ad and nc.get("is_genesis"):
+                    logging.warning(
+                        "funded_accounts on genesis node %s ignored for preview",
+                        node_name,
+                    )
+                    continue
+                if not ad and "seed" in nc and fa.get("seed_index") is not None:
+                    try:
+                        ad = self.nano_lib.nanolib_account_data(
+                            seed=nc["seed"], index=int(fa["seed_index"]))
+                    except (TypeError, ValueError) as e:
+                        logging.warning(
+                            "funded_accounts: cannot derive account for node %s: %s",
+                            node_name,
+                            e,
+                        )
+                        continue
+                if not ad:
+                    logging.warning(
+                        "funded_accounts: missing account for node %s entry %s — check nl_config.toml",
+                        node_name,
+                        fa,
+                    )
+                    continue
+                count += 1
+                line = (
+                    f"  node={node_name}  seed_index={fa.get('seed_index')}  "
+                    f"account={ad['account']}  balance_raw={fa.get('balance_raw')}"
+                )
+                logging.info(line)
+                print(line, flush=True)
+        if count == 0:
+            msg = (
+                "  (none — add funded_accounts under a representative node "
+                "in nanolocal/nl_config.toml to fund extra seed indices)"
+            )
+            logging.info(msg)
+            print(msg, flush=True)
+        logging.info(bar)
+        print(bar, flush=True)
+
     def get_nodes_config(self):
         res = []
         for node_name in self.get_nodes_name():
@@ -775,12 +868,26 @@ class ConfigParser:
             2] = f'MONGO_PORT={self.config_dict["nanolooker_mongo_port"]}'
         self.compose_dict["services"]["nl_nanolooker"]["build"]["args"][
             3] = f'NODE_WEBSOCKET_PORT={nanolooker_node_config["host_port_ws"]}'
+        self.compose_dict["services"]["nl_nanolooker"]["build"]["args"][
+            4] = (
+                f'INTERNAL_WS_URI=ws://{nanolooker_node_config["name"]}:17078')
         #set node for RPC
         self.compose_dict["services"]["nl_nanolooker"]["environment"][
             2] = f'RPC_DOMAIN=http://{nanolooker_node_config["name"]}:17076'
         #set correct port
         self.compose_dict["services"]["nl_nanolooker"]["ports"][
             0] = f'{self.config_dict["nanolooker_port"]}:3010'
+        # Publish Redis on host (e.g. nanolooker / tools on host use 127.0.0.1:6379).
+        self.compose_dict["services"]["nl_nanolooker_redis"]["ports"] = [
+            f'{self.config_dict["nanolooker_redis_port"]}:6379'
+        ]
+        # Mount the nano node data directory so nanolooker can read ledger size.
+        node_name = nanolooker_node_config["name"]
+        self.compose_dict["services"]["nl_nanolooker"]["environment"].append(
+            "NODE_FOLDER=/data/nano_genesis")
+        self.compose_dict["services"]["nl_nanolooker"].setdefault(
+            "volumes", []).append(
+                f"./{node_name}/NanoTest:/data/nano_genesis:ro")
         self.enabled_services.append(
             f'nanolooker enabled at {self.get_config_value("remote_address")}:{self.config_dict["nanolooker_port"]}'
         )
@@ -923,7 +1030,7 @@ class ConfigParser:
         elif general_tag["found"]:
             return general_tag["value"]
         else:
-            return "nanocurrency/nano-beta:latest"
+            return "nanocurrency/nano-beta:V28.2"
 
     def compose_add_node(self, node_name):
         #Search for individual docker_tag, then individual executable, then shared docker-tag then shared-executable

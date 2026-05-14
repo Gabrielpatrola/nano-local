@@ -14,14 +14,21 @@ ARG MONGO_PORT="27017"
 RUN sed -i "s/localhost:27017/${MONGO_CONTAINER}:${MONGO_PORT}/g" ./server/constants.js
 
 # redis npm v4 moved host/port inside socket:{} — patch before install
-RUN node -e 'var fs=require(`fs`),p=`./server/client/redis.js`,c=fs.readFileSync(p,`utf8`);c=c.replace(`...(NODE_ENV === "development" ? { port: DEV_REDIS_PORT } : { port: PROD_REDIS_PORT }),\n  host: REDIS_HOST,`,`socket: { host: REDIS_HOST, port: NODE_ENV === "development" ? Number(DEV_REDIS_PORT) : Number(PROD_REDIS_PORT) },`);fs.writeFileSync(p,c);'
+RUN node -e 'var fs=require(`fs`),p=`./server/client/redis.js`,c=fs.readFileSync(p,`utf8`),n=c.replace(/\.\.\.\(NODE_ENV[\s\S]*?PROD_REDIS_PORT \}\),\n\s*host: REDIS_HOST,/,`socket: { host: REDIS_HOST, port: NODE_ENV === "development" ? Number(DEV_REDIS_PORT) : Number(PROD_REDIS_PORT) },`);if(n===c){console.error("PATCH FAILED: redis v4 socket pattern not found");process.exit(1);}fs.writeFileSync(p,n);'
 
 RUN npm install
 RUN npm run build
 
 ARG REMOTE_ADDRESS="127.0.0.1"
 ARG NODE_WEBSOCKET_PORT="47000"
-RUN cd dist && sed -i "s/wss:\/\/www.nanolooker.com\/ws/ws:\/\/${REMOTE_ADDRESS}:${NODE_WEBSOCKET_PORT}/g" $(grep -rl wss://www.nanolooker.com/ws ./)
+ARG INTERNAL_WS_URI="ws://localhost:17078"
+# Patch client bundle (uses external-facing address)
+RUN cd dist && sed -i "s|wss://www.nanolooker.com/ws|ws://${REMOTE_ADDRESS}:${NODE_WEBSOCKET_PORT}|g" $(grep -rl wss://www.nanolooker.com/ws ./)
+# ws/index.js builds the URL as: `wss://www.nanolooker.com/ws:${process.env.WS_PORT}`
+# Replace the whole expression (base URL + port var) with the internal URI
+RUN sed -i "s|wss://www.nanolooker.com/ws:[$][{]process[.]env[.]WS_PORT[}]|${INTERNAL_WS_URI}|g" ./server/ws/index.js
+# Replace any remaining occurrences in other server files
+RUN grep -rl "wss://www.nanolooker.com/ws" ./server/ | xargs -r sed -i "s|wss://www.nanolooker.com/ws|${INTERNAL_WS_URI}|g"
 
 EXPOSE 3010
 CMD [ "npm", "run", "start:server" ]

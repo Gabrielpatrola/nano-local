@@ -238,7 +238,7 @@ class NanoRpc:
             max_retry = max_retry - 1
             if max_retry >= 0:
                 time.sleep(0.5)  #100ms
-                self.post_with_auth(content, max_retry, timeout=timeout)
+                return self.post_with_auth(content, max_retry, timeout=timeout)
 
     def is_online(self, timeout=1):
         while timeout > 0:
@@ -616,7 +616,7 @@ class NanoRpc:
             "difficulty": self.get_active_difficulty()["network_minimum"]
         }
         if request_only: return req
-        data = self.post_with_auth(req)
+        data = self.post_with_auth(req, timeout=120)
         return data
 
     def block_create(self,

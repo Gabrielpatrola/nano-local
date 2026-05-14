@@ -881,6 +881,13 @@ class ConfigParser:
         self.compose_dict["services"]["nl_nanolooker_redis"]["ports"] = [
             f'{self.config_dict["nanolooker_redis_port"]}:6379'
         ]
+        # Mount the nano node data directory so nanolooker can read ledger size.
+        node_name = nanolooker_node_config["name"]
+        self.compose_dict["services"]["nl_nanolooker"]["environment"].append(
+            "NODE_FOLDER=/data/nano_genesis")
+        self.compose_dict["services"]["nl_nanolooker"].setdefault(
+            "volumes", []).append(
+                f"./{node_name}/NanoTest:/data/nano_genesis:ro")
         self.enabled_services.append(
             f'nanolooker enabled at {self.get_config_value("remote_address")}:{self.config_dict["nanolooker_port"]}'
         )
